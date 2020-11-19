@@ -54,19 +54,19 @@ NTX, NTY = TX.size, TY.size
 
 DAT = np.load(PREF+'.dat.npy')
 
-ENERX = DAT[:, :, :, 0]
-ENERY = DAT[:, :, :, 1]
+# ENERX = DAT[:, :, :, 0]
+# ENERY = DAT[:, :, :, 1]
 ENER = DAT[:, :, :, 2]
 MAG = DAT[:, :, :, 3]
 
-MENERX = ENERX.mean(2)
-MENERY = ENERY.mean(2)
+# MENERX = ENERX.mean(2)
+# MENERY = ENERY.mean(2)
 MENER = ENER.mean(2)
 MMAG = np.abs(MAG).mean(2)
 
-SPHTX = np.square(ENERX.std(2))/np.square(TX.reshape(1, -1))
-SPHTY = np.square(ENERY.std(2))/np.square(TY.reshape(1, -1))
-SPHT = SPHTX+SPHTY
+# SPHTX = np.square(ENERX.std(2))/np.square(TX.reshape(1, -1))
+# SPHTY = np.square(ENERY.std(2))/np.square(TY.reshape(1, -1))
+# SPHT = SPHTX+SPHTY
 
 def plot_diagram(data, alias):
     file_name = PREF+'.{}.png'.format(alias)
@@ -94,10 +94,10 @@ def plot_diagram(data, alias):
     fig.savefig(file_name)
     plt.close()
 
-plot_diagram(MENERX, 'enerx')
-plot_diagram(MENERY, 'enery')
+# plot_diagram(MENERX, 'enerx')
+# plot_diagram(MENERY, 'enery')
 plot_diagram(MENER, 'ener')
 plot_diagram(MMAG, 'mag')
-plot_diagram(SPHTX, 'sphtx')
-plot_diagram(SPHTY, 'sphty')
-plot_diagram(SPHT, 'spht')
+# plot_diagram(SPHTX, 'sphtx')
+# plot_diagram(SPHTY, 'sphty')
+# plot_diagram(SPHT, 'spht')

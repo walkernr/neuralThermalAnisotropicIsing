@@ -49,7 +49,7 @@ def parse_args():
     parser.add_argument('-nt', '--threads', help='threads per worker',
                         type=int, default=1)
     parser.add_argument('-mt', '--method', help='parallelization method',
-                        type=str, default='spawn')
+                        type=str, default='forkserver')
     parser.add_argument('-nm', '--name', help='simulation name',
                         type=str, default='init')
     parser.add_argument('-n', '--lattice_sites', help='lattice sites',
@@ -65,9 +65,11 @@ def parse_args():
     parser.add_argument('-tyr', '--temp_y_range', help='temp y range (low and high)',
                         type=float, nargs=2, default=[0.02, 8.02])
     parser.add_argument('-sc', '--sample_cutoff', help='sample recording cutoff',
-                        type=int, default=256)
+                        type=int, default=512)
     parser.add_argument('-sn', '--sample_number', help='number of samples to generate',
-                        type=int, default=768)
+                        type=int, default=1024)
+    parser.add_argument('-rec', '--remcmc_cutoff', help='replica exchange markov chain monte carlo cutoff',
+                        type=int, default=512)
     # parse arguments
     args = parser.parse_args()
     # return arguments
@@ -79,7 +81,7 @@ def parse_args():
             args.name, args.lattice_sites,
             args.temp_x_number, *args.temp_x_range,
             args.temp_y_number, *args.temp_y_range,
-            args.sample_cutoff, args.sample_number)
+            args.sample_cutoff, args.sample_number, args.remcmc_cutoff)
 
 
 def client_info():
@@ -390,6 +392,40 @@ def gen_samples():
             futures = [gen_sample(k, STATE[k]) for k in range(NS)]
     return futures
 
+
+# -----------------------------------------
+# replica exchange markov chain monte carlo
+# -----------------------------------------
+
+
+def replica_exchange():
+    ''' performs parallel tempering across temperature samples for each field strength '''
+    # catalog swaps
+    swaps = 0
+    for u in range(NTX-1, -1, -1):
+        for v in range(u):
+            for k in range(NTY-1, -1, -1):
+                for l in range(k):
+                    i = ravel(u, v, NTX)
+                    j = ravel(k, l, NTY)
+                    ex1, ey1, ex2, ey2 = STATE[i][1], STATE[i][2], STATE[j][1], STATE[j][2]
+                    tx1, ty1, tx2, ty2 = TX[u], TY[v], TX[k], TY[l]
+                    b1e1 = ex1/tx1+ey1/ty1
+                    b2e2 = ex2/tx2+ey2/ty2
+                    b1e2 = ex2/tx1+ey2/ty1
+                    b2e1 = ex1/tx2+ey1/ty2
+                    dh = (b1e1+b2e2)-(b1e2+b2e1)
+                    # metropolis criterion
+                    if np.random.rand() <= np.exp(dh):
+                        swaps += 1
+                        # swap states
+                        STATE[i], STATE[j] = STATE[j], STATE[i]
+    if VERBOSE:
+        print('-------------------------------')
+        print('%d replica exchanges performed' % swaps)
+        print('-------------------------------')
+
+
 # -------------
 # restart files
 # -------------
@@ -427,7 +463,7 @@ if __name__ == '__main__':
      NAME, N,
      NTX, LTX, HTX,
      NTY, LTY, HTY,
-     CUTOFF, NSMPL) = parse_args()
+     CUTOFF, NSMPL, RECUTOFF) = parse_args()
 
     # set random seed
     SEED = 256
@@ -466,7 +502,7 @@ if __name__ == '__main__':
         from joblib import Parallel, delayed
     if DASK:
         os.environ['DASK_ALLOWED_FAILURES'] = '64'
-        os.environ['DASK_WORK_STEALING'] = 'False'
+        os.environ['DASK_WORK_STEALING'] = 'True'
         os.environ['DASK_MULTIPROCESSING_METHOD'] = MTHD
         os.environ['DASK_LOG_FORMAT'] = '\r%(name)s - %(levelname)s - %(message)s'
         from distributed import Client, LocalCluster, progress
@@ -532,6 +568,9 @@ if __name__ == '__main__':
         if (STEP+1) % REFREQ == 0:
             # save state for restart
             dump_samples_restart()
+        # replica exchange markov chain mc
+        if (STEP+1) != NSMPL and (STEP+1) <= RECUTOFF:
+            replica_exchange()
     if DASK:
         # terminate client after completion
         CLIENT.close()
