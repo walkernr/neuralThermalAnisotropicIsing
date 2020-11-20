@@ -54,19 +54,11 @@ NTX, NTY = TX.size, TY.size
 
 DAT = np.load(PREF+'.dat.npy')
 
-# ENERX = DAT[:, :, :, 0]
-# ENERY = DAT[:, :, :, 1]
 ENER = DAT[:, :, :, 2]
 MAG = DAT[:, :, :, 3]
 
-# MENERX = ENERX.mean(2)
-# MENERY = ENERY.mean(2)
 MENER = ENER.mean(2)
 MMAG = np.abs(MAG).mean(2)
-
-# SPHTX = np.square(ENERX.std(2))/np.square(TX.reshape(1, -1))
-# SPHTY = np.square(ENERY.std(2))/np.square(TY.reshape(1, -1))
-# SPHT = SPHTX+SPHTY
 
 def plot_diagram(data, alias):
     file_name = PREF+'.{}.png'.format(alias)
@@ -94,10 +86,32 @@ def plot_diagram(data, alias):
     fig.savefig(file_name)
     plt.close()
 
-# plot_diagram(MENERX, 'enerx')
-# plot_diagram(MENERY, 'enery')
 plot_diagram(MENER, 'ener')
 plot_diagram(MMAG, 'mag')
-# plot_diagram(SPHTX, 'sphtx')
-# plot_diagram(SPHTY, 'sphty')
-# plot_diagram(SPHT, 'spht')
+
+DENER = np.diagonal(ENER, offset=0, axis1=0, axis2=1)
+DMAG = np.diagonal(MAG, offset=0, axis1=0, axis2=1)
+
+DMENER = DENER.mean(0)
+DMMAG = np.abs(DMAG).mean(0)
+DSPHT = np.square(DENER.std(0))/np.square(TX)
+DMSUSC = np.square(np.abs(DMAG).std(0))/TX
+
+def plot_diagonal(data, alias, label):
+    file_name = PREF+'.diag.{}.png'.format(alias)
+    fig, ax = plt.subplots()
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.xaxis.set_ticks_position('bottom')
+    ax.yaxis.set_ticks_position('left')
+    ax.plot(TX, data, color='k')
+    ax.set_xlabel(r'$T$')
+    ax.set_ylabel(label)
+    fig.savefig(file_name)
+    plt.close()
+
+
+plot_diagonal(DMENER, 'ener', r'$E$')
+plot_diagonal(DMMAG, 'mag', r'$m$')
+plot_diagonal(DSPHT, 'spht', r'$c$')
+plot_diagonal(DMSUSC, 'msusc', r'$\chi$')

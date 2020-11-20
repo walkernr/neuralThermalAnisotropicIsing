@@ -283,7 +283,8 @@ def extract(config, k):
 def init_sample(k):
     ''' initializes sample '''
     # generate random ising configuration
-    config = np.random.choice([-1, 1], size=(N, N)).astype(np.int8)
+    # config = np.random.choice([-1, 1], size=(N, N)).astype(np.int8)
+    config = np.ones((N, N)).astype(np.int8)
     # extract energies and magnetizations
     enerx, enery, mag = extract(config, k)
     # set acceptations
@@ -345,8 +346,6 @@ def spin_flip_mc(config, k, c, nts, nas):
 def gen_sample_loop(config, k, cs, nts, nas):
     for c in cs:
         config, nts, nas = spin_flip_mc(config, k, c, nts, nas)
-    if np.random.rand() < 0.25:
-        config *= -1
     return config, nts, nas
 
 
