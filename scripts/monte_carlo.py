@@ -346,6 +346,8 @@ def spin_flip_mc(config, k, c, nts, nas):
 def gen_sample_loop(config, k, cs, nts, nas):
     for c in cs:
         config, nts, nas = spin_flip_mc(config, k, c, nts, nas)
+    if np.random.rand() < 0.5
+        config *= -1
     return config, nts, nas
 
 
