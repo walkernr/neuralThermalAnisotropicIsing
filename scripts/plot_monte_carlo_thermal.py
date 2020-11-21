@@ -15,20 +15,20 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 plt.rc('font', family='sans-serif')
 FTSZ = 28
 FIGW = 16
-PPARAMS = {'figure.figsize': (FIGW, FIGW),
-            'lines.linewidth': 4.0,
-            'legend.fontsize': FTSZ,
-            'axes.labelsize': FTSZ,
-            'axes.titlesize': FTSZ,
-            'axes.linewidth': 2.0,
-            'xtick.labelsize': FTSZ,
-            'xtick.major.size': 20,
-            'xtick.major.width': 2.0,
-            'ytick.labelsize': FTSZ,
-            'ytick.major.size': 20,
-            'ytick.major.width': 2.0,
-            'font.size': FTSZ}
-plt.rcParams.update(PPARAMS)
+PPARAM = {'figure.figsize': (FIGW, FIGW),
+          'lines.linewidth': 4.0,
+          'legend.fontsize': FTSZ,
+          'axes.labelsize': FTSZ,
+          'axes.titlesize': FTSZ,
+          'axes.linewidth': 2.0,
+          'xtick.labelsize': FTSZ,
+          'xtick.major.size': 20,
+          'xtick.major.width': 2.0,
+          'ytick.labelsize': FTSZ,
+          'ytick.major.size': 20,
+          'ytick.major.width': 2.0,
+          'font.size': FTSZ}
+plt.rcParams.update(PPARAM)
 SCALE = lambda a, b: (a-np.min(b))/(np.max(b)-np.min(b))
 CM = plt.get_cmap('plasma')
 
@@ -78,8 +78,8 @@ def plot_diagram(data, alias):
     ax.set_xticklabels(np.round(TX, 2)[::4], rotation=-60)
     ax.set_yticklabels(np.round(TY, 2)[::4])
     # label axes
-    ax.set_xlabel(r'$T_x$')
-    ax.set_ylabel(r'$T_y$')
+    ax.set_xlabel(r'$T_y$')
+    ax.set_ylabel(r'$T_x$')
     # place colorbal
     fig.colorbar(im, cax=cax, orientation='horizontal', ticks=np.linspace(data.min(), data.max(), 3))
     # save figure

@@ -27,11 +27,11 @@ def parse_args():
     parser.add_argument('-c', '--client', help='dask client run mode', action='store_true')
     parser.add_argument('-d', '--distributed', help='distributed run mode', action='store_true')
     parser.add_argument('-rd', '--restart_dump', help='restart dump frequency',
-                        type=int, default=256)
+                        type=int, default=128)
     parser.add_argument('-rn', '--restart_name', help='restart dump simulation name',
                         type=str, default='ising_init')
     parser.add_argument('-rs', '--restart_step', help='restart dump start step',
-                        type=int, default=256)
+                        type=int, default=1024)
     parser.add_argument('-q', '--queue', help='job submission queue',
                         type=str, default='jobqueue')
     parser.add_argument('-a', '--allocation', help='job submission allocation',
@@ -57,19 +57,19 @@ def parse_args():
     parser.add_argument('-j', '--interaction', help='interaction j',
                         type=float, default=1.0)
     parser.add_argument('-txn', '--temp_x_number', help='number of x temps',
-                        type=int, default=17)
+                        type=int, default=33)
     parser.add_argument('-txr', '--temp_x_range', help='temp x range (low and high)',
                         type=float, nargs=2, default=[0.02, 8.02])
     parser.add_argument('-tyn', '--temp_y_number', help='number of y temps',
-                        type=int, default=17)
+                        type=int, default=33)
     parser.add_argument('-tyr', '--temp_y_range', help='temp y range (low and high)',
                         type=float, nargs=2, default=[0.02, 8.02])
     parser.add_argument('-sc', '--sample_cutoff', help='sample recording cutoff',
-                        type=int, default=512)
-    parser.add_argument('-sn', '--sample_number', help='number of samples to generate',
                         type=int, default=1024)
+    parser.add_argument('-sn', '--sample_number', help='number of samples to generate',
+                        type=int, default=2048)
     parser.add_argument('-rec', '--remcmc_cutoff', help='replica exchange markov chain monte carlo cutoff',
-                        type=int, default=512)
+                        type=int, default=1024)
     # parse arguments
     args = parser.parse_args()
     # return arguments
@@ -103,7 +103,7 @@ def file_prefix():
 
 def init_output(k):
     ''' initializes output filenames for a sample '''
-    # extract field/temperature indices from index
+    # extract temp_x/temp_y indices from index
     i, j = np.unravel_index(k, shape=(NTX, NTY), order='C')
     dat = file_prefix()+'.%02d.%02d.dat' % (i, j)
     dmp = file_prefix()+'.%02d.%02d.dmp' % (i, j)
@@ -125,7 +125,7 @@ def init_outputs():
 
 def init_header(k, output):
     ''' writes header for a sample '''
-    # extract pressure/temperature indices from index
+    # extract temp_x/temp_y indices from index
     i, j = np.unravel_index(k, shape=(NTX, NTY), order='C')
     with open(output[0], 'w') as dat_out:
         dat_out.write('# ---------------------\n')
