@@ -9,8 +9,6 @@ import argparse
 import os
 import numpy as np
 from tqdm import tqdm, trange
-from sklearn.decomposition import PCA
-from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras.layers import (Input, Flatten, Reshape, Lambda, Concatenate,
@@ -21,6 +19,8 @@ from tensorflow.keras.models import Model, save_model, load_model
 from tensorflow.keras.utils import to_categorical
 from tensorflow.python.training.tracking.util import Checkpoint
 from tensorflow.python.training.checkpoint_management import CheckpointManager
+from data_utils import *
+from conv_utils import *
 
 
 def parse_args():
@@ -45,7 +45,7 @@ def parse_args():
     parser.add_argument('-si', '--sample_interval', help='interval for selecting phase points (variational autoencoder)',
                         type=int, default=1)
     parser.add_argument('-sn', '--sample_number', help='number of samples per phase point (variational autoencoder)',
-                        type=int, default=1024)
+                        type=int, default=512)
     parser.add_argument('-sc', '--scale_data', help='scale data (-1, 1) -> (0, 1)',
                         action='store_true')
     parser.add_argument('-cp', '--conv_padding', help='convolutional zero-padding',
@@ -57,7 +57,7 @@ def parse_args():
     parser.add_argument('-fbs', '--filter_base_stride', help='size of filter stride in base hidden convolutional layer',
                         type=int, default=3)
     parser.add_argument('-fb', '--filter_base', help='base number of filters in base hidden convolutional layer',
-                        type=int, default=32)
+                        type=int, default=4)
     parser.add_argument('-fl', '--filter_length', help='size of filters following base convolution',
                         type=int, default=3)
     parser.add_argument('-fs', '--filter_stride', help='size of filter strides following base convolution',
@@ -81,15 +81,15 @@ def parse_args():
     parser.add_argument('-an', '--activation', help='activation function',
                         type=str, default='selu')
     parser.add_argument('-op', '--optimizer', help='optimizer',
-                        type=str, default='nadam')
+                        type=str, default='adam')
     parser.add_argument('-lr', '--learning_rate', help='learning rate',
-                        type=float, default=1e-3)
+                        type=float, default=1e-4)
     parser.add_argument('-bs', '--batch_size', help='size of batches',
-                        type=int, default=121)
+                        type=int, default=128)
     parser.add_argument('-rs', '--random_sampling', help='random batch sampling',
                         action='store_true')
     parser.add_argument('-ep', '--epochs', help='number of training epochs',
-                        type=int, default=32)
+                        type=int, default=1)
     parser.add_argument('-sd', '--random_seed', help='random seed for sample selection and learning',
                         type=int, default=128)
     args = parser.parse_args()
@@ -107,10 +107,10 @@ class VAE():
     Variational autoencoder modeling of the Ising spin configurations
     '''
     def __init__(self, input_shape=(81, 81, 1), scaled=False, padded=False, conv_number=4,
-                 filter_base_length=3, filter_base_stride=3, filter_base=32, filter_length=3, filter_stride=3, filter_factor=2,
+                 filter_base_length=3, filter_base_stride=3, filter_base=32, filter_length=3, filter_stride=3, filter_factor=1,
                  dropout=False, z_dim=2, kl_anneal=False, alpha=1.0, beta=8.0, lamb=1.0,
                  krnl_init='lecun_normal', act='selu',
-                 opt='nadam', lr=1e-3, batch_size=121, dataset_size=1115136):
+                 opt='nadam', lr=1e-5, batch_size=128, dataset_size=1115136):
         self.eps = 1e-8
         ''' initialize model parameters '''
         self.scaled = scaled
@@ -312,16 +312,6 @@ class VAE():
                     conv = AlphaDropout(rate=0.5, noise_shape=(self.batch_size, 1, 1, filter_number), name='enc_conv_drop_{}'.format(i))(conv)
         # flatten final convolutional layer
         x = Flatten(name='enc_fltn_0')(conv)
-        u = 0
-        x = Dense(units=128,
-                  kernel_initializer=self.krnl_init,
-                  name='enc_dense_{}'.format(u))(x)
-        if self.act == 'lrelu':
-            x = LeakyReLU(alpha=0.1, name='enc_dense_lrelu_{}'.format(u))(x)
-            x = BatchNormalization(name='enc_dense_batchnorm_{}'.format(u))(x)
-        elif self.act == 'selu':
-            x = Activation(activation='selu', name='enc_dense_selu_{}'.format(u))(x)
-        u += 1
         if np.any(np.array([self.alpha, self.beta, self.lamb]) > 0):
             # mean
             self.mu = Dense(units=self.z_dim,
@@ -352,15 +342,6 @@ class VAE():
         x = self.dec_z_input
         # dense layer with same feature count as final convolution
         u = 0
-        x = Dense(units=128,
-                  kernel_initializer=self.krnl_init,
-                  name='dec_dense_{}'.format(u))(x)
-        if self.act == 'lrelu':
-            x = LeakyReLU(alpha=0.1, name='dec_dense_lrelu_{}'.format(u))(x)
-            x = BatchNormalization(name='dec_dense_batchnorm_{}'.format(u))(x)
-        elif self.act == 'selu':
-            x = Activation(activation='selu', name='dec_dense_selu_{}'.format(u))(x)
-        u += 1
         x = Dense(units=np.prod(self.final_conv_shape),
                   kernel_initializer=self.krnl_init,
                   name='dec_dense_{}'.format(u))(x)
@@ -495,7 +476,7 @@ class VAE():
         params = (name, lattice_sites, interval, num_samples, scaled, seed)
         file_name = os.getcwd()+'/{}.{}.{}.{}.{:d}.{}.'.format(*params)+self.get_file_prefix()+'.weights.h5'
         # load weights
-        self.vae.load_weights(file_name, by_name=True)
+        self.vae.load_weights(file_name)
 
 
     def get_losses(self):
@@ -560,12 +541,12 @@ class VAE():
         # VAE losses
         if np.any(np.array([self.alpha, self.beta, self.lamb]) > 0):
             vae_loss, tc_loss, rc_loss = self.vae.train_on_batch([x_batch, kl_anneal])
-            self.vae_loss_history.append(vae_loss)
+            self.vae_loss_history.append(vae_loss.mean())
             self.tc_loss_history.append(tc_loss)
             self.rc_loss_history.append(rc_loss)
         else:
             vae_loss, rc_loss = self.vae.train_on_batch(x_batch)
-            self.vae_loss_history.append(vae_loss)
+            self.vae_loss_history.append(vae_loss.mean())
             self.tc_loss_history.append(0)
             self.rc_loss_history.append(rc_loss)
 
@@ -596,9 +577,10 @@ class VAE():
         self.num_temp_x, self.num_temp_y, self.num_samples, _, _, = x_train.shape
         self.num_batches = (self.num_temp_x*self.num_temp_y*self.num_samples)//self.batch_size
         if random_sampling:
-            x_train = extract_unique_data(x_train, self.num_temp_x, self.num_temp_y, self.num_samples, self.input_shape)
+            # x_train = extract_unique_data(x_train, self.num_temp_x, self.num_temp_y, self.num_samples, self.input_shape)
+            x_train = x_train.reshape(self.num_temp_x*self.num_temp_y*self.num_samples, *self.input_shape)
         else:
-            x_train = reorder_training_data(x_train, self.num_temp_x, self.num_temp_y, self.num_samples, self.input_shape)
+            x_train = reorder_training_data(x_train, self.num_temp_x, self.num_temp_y, self.num_samples, self.input_shape, self.batch_size)
         num_epochs += self.past_epochs
         if np.all(np.array([self.alpha, self.beta, self.lamb]) == 0):
             kl_anneal = np.zeros((num_epochs, self.num_batches))
@@ -664,7 +646,7 @@ if __name__ == '__main__':
         np.random.seed(None)
     else:
         np.random.seed(SEED)
-        tf.random.set_seed(SEED)
+        tf.set_random_seed(SEED)
     if GPU:
         DEVICE = '/GPU:0'
     else:
@@ -704,38 +686,22 @@ if __name__ == '__main__':
     if np.any(np.array([ALPHA, BETA, LAMBDA]) > 0):
         MU, LOGVAR, Z = MDL.encode(CONF.reshape(-1, *IS), VERBOSE)
         SIGMA = np.exp(0.5*LOGVAR)
-        PMMDL = PCA(n_components=ZD)
-        PMU = PMMDL.fit_transform(MU)
-        PSMDL = PCA(n_components=ZD)
-        PSIGMA = PSMDL.fit_transform(SIGMA)
-        PZMDL = PCA(n_components=ZD)
-        PZ = PZMDL.fit_transform(Z)
         MU = MU.reshape(NTX, NTY, NS, ZD)
         SIGMA = SIGMA.reshape(NTX, NTY, NS, ZD)
         Z = Z.reshape(NTX, NTY, NS, ZD)
-        PMU = PMU.reshape(NTX, NTY, NS, ZD)
-        PSIGMA = PSIGMA.reshape(NTX, NTY, NS, ZD)
-        PZ = PZ.reshape(NTX, NTY, NS, ZD)
         save_output_data(MU, 'vae_mean', NAME, N, I, NS, SC, SEED, PRFX)
         save_output_data(SIGMA, 'vae_sigma', NAME, N, I, NS, SC, SEED, PRFX)
         save_output_data(Z, 'vae_z', NAME, N, I, NS, SC, SEED, PRFX)
-        save_output_data(PMU, 'vae_mean_p', NAME, N, I, NS, SC, SEED, PRFX)
-        save_output_data(PSIGMA, 'vae_sigma_p', NAME, N, I, NS, SC, SEED, PRFX)
-        save_output_data(PZ, 'vae_z_p', NAME, N, I, NS, SC, SEED, PRFX)
-        del MU, LOGVAR, SIGMA, PMU, PSIGMA, PZ
+        del MU, LOGVAR, SIGMA
         X = MDL.generate(Z.reshape(-1, ZD), VERBOSE).astype(np.float16)
         del Z
     else:
         Z = MDL.encode(CONF.reshape(-1, *IS), VERBOSE)
-        PMDL = PCA(n_components=ZD)
-        PZ = PMDL.fit_transform(Z)
         Z = Z.reshape(NTX, NTY, NS, ZD)
-        PZ = PZ.reshape(NTX, NTY, NS, ZD)
         save_output_data(Z, 'vae_z', NAME, N, I, NS, SC, SEED, PRFX)
-        save_output_data(PZ, 'vae_z_p', NAME, N, I, NS, SC, SEED, PRFX)
-        del PZ
         X = MDL.generate(Z.reshape(-1, ZD), VERBOSE).astype(np.float16)
         del Z
+    K.clear_session()
     BCERR, BCACC = binary_crossentropy_accuracy(CONF.reshape(-1, *IS), X, SC)
     del CONF, X
     save_output_data(BCERR, 'bc_err', NAME, N, I, NS, SC, SEED, PRFX)

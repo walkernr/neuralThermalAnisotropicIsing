@@ -22,6 +22,8 @@ def parse_args():
                         type=int, default=512)
     parser.add_argument('-sc', '--scale_data', help='scale data (-1, 1) -> (0, 1)',
                         action='store_true')
+    parser.add_argument('-w', '--wasserstein', help='wasserstein gan',
+                        action='store_true')
     parser.add_argument('-cp', '--conv_padding', help='convolutional zero-padding',
                         action='store_true')
     parser.add_argument('-cn', '--conv_number', help='convolutional layer depth',
@@ -38,36 +40,51 @@ def parse_args():
                         type=int, default=3)
     parser.add_argument('-ff', '--filter_factor', help='multiplicative factor of filters after base convolution',
                         type=int, default=2)
-    parser.add_argument('-do', '--dropout', help='toggle dropout layers',
+    parser.add_argument('-gd', '--generator_dropout', help='toggle generator dropout layers',
+                        action='store_true')
+    parser.add_argument('-dd', '--discriminator_dropout', help='toggle discriminator dropout layers',
                         action='store_true')
     parser.add_argument('-zd', '--z_dimension', help='sample noise dimension',
-                        type=int, default=2)
-    parser.add_argument('-ka', '--kld_annealing', help='toggle kld annealing',
-                        action='store_true')
-    parser.add_argument('-ra', '--alpha', help='total correlation alpha',
-                        type=float, default=1.0)
-    parser.add_argument('-rb', '--beta', help='total correlation beta',
-                        type=float, default=8.0)
-    parser.add_argument('-rl', '--lamb', help='total correlation lambda',
-                        type=float, default=1.0)
+                        type=int, default=100)
+    parser.add_argument('-cd', '--c_dimension', help='sample classification dimension',
+                        type=int, default=5)
+    parser.add_argument('-ud', '--u_dimension', help='sample continuous dimension',
+                        type=int, default=0)
     parser.add_argument('-ki', '--kernel_initializer', help='kernel initializer',
                         type=str, default='lecun_normal')
     parser.add_argument('-an', '--activation', help='activation function',
                         type=str, default='selu')
-    parser.add_argument('-op', '--optimizer', help='optimizer',
+    parser.add_argument('-dop', '--discriminator_optimizer', help='optimizer for discriminator',
+                        type=str, default='sgd')
+    parser.add_argument('-gop', '--gan_optimizer', help='optimizer for gan',
                         type=str, default='adam')
-    parser.add_argument('-lr', '--learning_rate', help='learning rate',
+    parser.add_argument('-dlr', '--discriminator_learning_rate', help='learning rate for discriminator',
+                        type=float, default=1e-3)
+    parser.add_argument('-glr', '--gan_learning_rate', help='learning rate for gan',
                         type=float, default=1e-4)
+    parser.add_argument('-gl', '--gan_lambda', help='gan regularization lambda',
+                        type=float, default=1.0)
+    parser.add_argument('-ta', '--trainer_alpha', help='trainer alpha label smoothing',
+                        type=float, default=0.1)
+    parser.add_argument('-tb', '--trainer_beta', help='trainer beta label flipping',
+                        type=float, default=0.05)
+    parser.add_argument('-dc', '--discriminator_cycles', help='number of discriminator training cycles per batch',
+                        type=int, default=1)
+    parser.add_argument('-gc', '--gan_cycles', help='number of gan training cycles per batch',
+                        type=int, default=2)
     parser.add_argument('-bs', '--batch_size', help='size of batches',
                         type=int, default=128)
     parser.add_argument('-sd', '--random_seed', help='random seed for sample selection and learning',
                         type=int, default=128)
     args = parser.parse_args()
     return (args.verbose,
-            args.name, args.lattice_sites, args.sample_interval, args.sample_number, args.scale_data, args.conv_padding,
-            args.conv_number, args.filter_base_length, args.filter_base_stride, args.filter_base, args.filter_length, args.filter_stride, args.filter_factor,
-            args.dropout, args.z_dimension, args.kld_annealing, args.alpha, args.beta, args.lamb,
-            args.kernel_initializer, args.activation, args.optimizer, args.learning_rate,
+            args.name, args.lattice_sites, args.sample_interval, args.sample_number, args.scale_data, args.wasserstein, args.conv_padding, args.conv_number,
+            args.filter_base_length, args.filter_base_stride, args.filter_base, args.filter_length, args.filter_stride, args.filter_factor,
+            args.generator_dropout, args.discriminator_dropout, args.z_dimension, args.c_dimension, args.u_dimension,
+            args.kernel_initializer, args.activation,
+            args.discriminator_optimizer, args.gan_optimizer,
+            args.discriminator_learning_rate, args.gan_learning_rate,
+            args.gan_lambda, args.trainer_alpha, args.trainer_beta, args.discriminator_cycles, args.gan_cycles,
             args.batch_size, args.random_seed)
 
 
@@ -78,38 +95,12 @@ def load_losses(name, lattice_sites, interval, num_samples, scaled, seed, prfx, 
     file_name = os.getcwd()+'/{}.{}.{}.{}.{:d}.{}.'.format(*params)+prfx+'.loss.npy'
     losses = np.load(file_name)
     # change loss histories into lists
-    vae_loss = losses[:, :, 0].reshape(-1, num_batches)
-    tc_loss = losses[:, :, 1].reshape(-1, num_batches)
-    rc_loss = losses[:, :, 2].reshape(-1, num_batches)
-    return vae_loss, tc_loss, rc_loss
-
-
-def plot_histogram(u, cmap, file_prfx, alias, domain_name, verbose=False):
-    file_name = os.getcwd()+'/'+file_prfx+'.{}.png'.format(alias)
-    # initialize figure and axes
-    fig, ax = plt.subplots()
-    # remove spines on top and right
-    ax.spines['right'].set_visible(False)
-    ax.spines['top'].set_visible(False)
-    # set axis ticks to left and bottom
-    ax.xaxis.set_ticks_position('bottom')
-    ax.yaxis.set_ticks_position('left')
-    ax.hist(u, bins=64, density=True, color=cmap(0.25))
-    ax.set_xlabel(domain_name)
-    ax.set_ylabel('Density')
-    # save figure
-    fig.savefig(file_name)
-    plt.close()
-
-
-def plot_bc_error_accuracy(error, accuracy, cmap,
-                           name, lattice_sites, interval, num_samples, scaled, seed,
-                           prfx, verbose=False):
-    # file name parameters
-    params = (name, lattice_sites, interval, num_samples, scaled, seed)
-    file_prfx = '{}.{}.{}.{}.{:d}.{}.'.format(*params)+prfx
-    plot_histogram(error[:, 0], cmap, file_prfx, 'bc_err_hist', 'Binary Crossentropy (Reconstruction Loss)', verbose)
-    plot_histogram(accuracy[:, 0], cmap, file_prfx, 'bc_acc_hist', 'Classification Accuracy (Reconstruction)', verbose)
+    dsc_fake_loss = losses[:, :, 0].reshape(-1, num_batches)
+    dsc_real_loss = losses[:, :, 1].reshape(-1, num_batches)
+    gan_loss = losses[:, :, 2].reshape(-1, num_batches)
+    ent_cat_loss = losses[:, :, 3].reshape(-1, num_batches)
+    ent_con_loss = losses[:, :, 4].reshape(-1, num_batches)
+    return dsc_fake_loss, dsc_real_loss, gan_loss, ent_cat_loss, ent_con_loss
 
 
 def plot_batch_losses(losses, cmap, file_prfx, verbose=False):
@@ -125,11 +116,18 @@ def plot_batch_losses(losses, cmap, file_prfx, verbose=False):
     n_epochs, n_batches = losses[0].shape[:2]
     n_iters = n_epochs*n_batches
     # plot losses
-    loss_list = ['VAE Loss', 'Latent Loss', 'Reconstruction Loss']
+    loss_list = ['Discriminator (Fake) Loss', 'Discriminator (Real) Loss',
+                 'Generator Loss', 'Categorical Control Loss', 'Continuous Control Loss']
     color_list = np.linspace(0.2, 0.8, len(losses))
     for i in trange(len(losses), desc='Plotting Batch Losses', disable=not verbose):
         ax.plot(np.arange(1, n_iters+1), losses[i].reshape(-1), color=cmap(color_list[i]), label=loss_list[i])
     ax.legend(loc='upper right')
+    # label axes
+    ax.set_xticks(n_batches*np.arange(1, n_epochs+1), minor=True)
+    ax.set_xticks(n_batches*np.arange(1, n_epochs+1)[::2], minor=False)
+    ax.set_xticklabels(n_batches*np.arange(1, n_epochs+1)[::2], rotation=60)
+    # ax.set_yticks(-np.log(0.125*np.arange(1, 8)), minor=False)
+    # ax.set_yticklabels(np.round(-np.log(0.125*np.arange(1, 8)), 2))
     ax.set_xlabel('Batch')
     ax.set_ylabel('Loss')
     # save figure
@@ -148,7 +146,8 @@ def plot_epoch_losses(losses, cmap, file_prfx, verbose=False):
     ax.xaxis.set_ticks_position('bottom')
     ax.yaxis.set_ticks_position('left')
     # plot losses
-    loss_list = ['VAE Loss', 'Latent Loss', 'Reconstruction Loss']
+    loss_list = ['Discriminator (Fake) Loss', 'Discriminator (Real) Loss',
+                 'Generator Loss', 'Categorical Control Loss', 'Continuous Control Loss']
     color_list = np.linspace(0.2, 0.8, len(losses))
     for i in trange(len(losses), desc='Plotting Epoch Losses', disable=not verbose):
         ax.plot(np.arange(1, losses[i].shape[0]+1), losses[i].mean(1), color=cmap(color_list[i]), label=loss_list[i])
@@ -162,10 +161,10 @@ def plot_epoch_losses(losses, cmap, file_prfx, verbose=False):
 
 
 def plot_losses(losses, cmap,
-                name, lattice_sites, interval, num_samples, scaled, seed,
+                name, lattice_length, interval, num_samples, scaled, seed,
                 prfx, verbose=False):
     # file name parameters
-    params = (name, lattice_sites, interval, num_samples, scaled, seed)
+    params = (name, lattice_length, interval, num_samples, scaled, seed)
     file_prfx = '{}.{}.{}.{}.{:d}.{}.'.format(*params)+prfx
     plot_batch_losses(losses, cmap, file_prfx, verbose)
     plot_epoch_losses(losses, cmap, file_prfx, verbose)
@@ -206,41 +205,28 @@ def plot_diagram(data, temp_x, temp_y, cmap, file_prfx, alias):
     plt.close()
 
 
-def plot_diagrams(m_data, s_data, temp_x, temp_y, cmap,
-                  name, lattice_sites, interval, num_samples, scaled, seed,
-                  prfx, alias, verbose=False):
-    params = (name, lattice_sites, interval, num_samples, scaled, seed)
+def plot_diagrams(c_data, u_data, fields, temps, cmap,
+                  name, lattice_length, interval, num_samples, scaled, seed,
+                  prfx, verbose=False):
+    params = (name, lattice_length, interval, num_samples, scaled, seed)
     file_prfx = '{}.{}.{}.{}.{:d}.{}.'.format(*params)+prfx
-    if s_data is not None:
-        mm_diag = m_data.mean(2)
-        ms_diag = m_data.std(2)
-        sm_diag = s_data.mean(2)
-        ss_diag = s_data.std(2)
-        mm_dim = mm_diag.shape[-1]
-        ms_dim = ms_diag.shape[-1]
-        sm_dim = sm_diag.shape[-1]
-        ss_dim = ss_diag.shape[-1]
-        if alias == ['m', 's'] or alias == ['m_p', 's_p']:
-            d0, d1 = 'Means', 'Sigmas'
-        elif alias == ['bc_err', 'bc_acc']:
-            d0, d1 = 'BC Errors', 'BC Accuracies'
-        for i in trange(mm_dim, desc='Plotting Mean VAE {}'.format(d0), disable=not verbose):
-            plot_diagram(mm_diag[:, :, i], temp_x, temp_y, cmap, file_prfx, '{}_m_{}'.format(alias[0], i))
-        for i in trange(sm_dim, desc='Plotting Mean VAE {}'.format(d1), disable=not verbose):
-            plot_diagram(sm_diag[:, :, i], temp_x, temp_y, cmap, file_prfx, '{}_m_{}'.format(alias[1], i))
-        for i in trange(ms_dim, desc='Plotting StDv VAE {}'.format(d0), disable=not verbose):
-            plot_diagram(ms_diag[:, :, i], temp_x, temp_y, cmap, file_prfx, '{}_s_{}'.format(alias[0], i))
-        for i in trange(ss_dim, desc='Plotting StDv VAE {}'.format(d1), disable=not verbose):
-            plot_diagram(ss_diag[:, :, i], temp_x, temp_y, cmap, file_prfx, '{}_s_{}'.format(alias[1], i))
-    else:
-        zm_diag = m_data.mean(2)
-        zs_diag = m_data.std(2)
-        zm_dim = zm_diag.shape[-1]
-        zs_dim = zs_diag.shape[-1]
-        for i in trange(zm_dim, desc='Plotting Mean VAE Encodings', disable=not verbose):
-            plot_diagram(zm_diag[:, :, i], temp_x, temp_y, cmap, file_prfx, '{}_m_{}'.format(alias, i))
-        for i in trange(zs_dim, desc='Plotting StDv VAE Encodings', disable=not verbose):
-            plot_diagram(zs_diag[:, :, i], temp_x, temp_y, cmap, file_prfx, '{}_s_{}'.format(alias, i))
+    c_m_diag = c_data.mean(2)
+    c_s_diag = c_data.std(2)
+    u_m_diag = u_data.mean(2)
+    u_s_diag = u_data.std(2)
+    c_m_dim = c_m_diag.shape[-1]
+    c_s_dim = c_s_diag.shape[-1]
+    u_m_dim = u_m_diag.shape[-1]
+    u_s_dim = u_s_diag.shape[-1]
+    d0, d1 = 'Means', 'StDvs'
+    for i in trange(c_m_dim, desc='Plotting Discrete Control {}'.format(d0), disable=not verbose):
+        plot_diagram(c_m_diag[:, :, i], fields, temps, cmap, file_prfx, 'c_m_{}'.format(i))
+    for i in trange(c_s_dim, desc='Plotting Discrete Control {}'.format(d1), disable=not verbose):
+        plot_diagram(c_s_diag[:, :, i], fields, temps, cmap, file_prfx, 'c_s_{}'.format(i))
+    for i in trange(u_m_dim, desc='Plotting Continuous Control {}'.format(d0), disable=not verbose):
+        plot_diagram(u_m_diag[:, :, i], fields, temps, cmap, file_prfx, 'u_m_{}'.format(i))
+    for i in trange(u_s_dim, desc='Plotting Continuous Control {}'.format(d1), disable=not verbose):
+        plot_diagram(u_s_diag[:, :, i], fields, temps, cmap, file_prfx, 'u_s_{}'.format(i))
 
 
 if __name__ == '__main__':
@@ -264,17 +250,23 @@ if __name__ == '__main__':
     CM = plt.get_cmap('plasma')
 
     (VERBOSE,
-     NAME, N, I, NS, SC, CP,
+     NAME, N, I, NS, SC, W, CP,
      CN, FBL, FBS, FB, FL, FS, FF,
-     DO, ZD, KA, ALPHA, BETA, LAMBDA,
-     KI, AN, OPT, LR,
+     GD, DD, ZD, CD, UD,
+     KI, AN,
+     DOPT, GOPT, DLR, GLR,
+     GLAMB, TALPHA, TBETA, DC, GC,
      BS, SEED) = parse_args()
 
-    FPARAM = (CN, FBL, FBS, FB, FL, FS, FF,
-              DO, ZD, KA, ALPHA, BETA, LAMBDA,
-              KI, AN, OPT, LR,
-              BS)
-    PRFX = 'btcvae.{}.{}.{}.{}.{}.{}.{}.{:d}.{}.{:d}.{:.0e}.{:.0e}.{:.0e}.{}.{}.{}.{:.0e}.{}'.format(*FPARAM)
+    params = (W,
+              CN,
+              FBL, FBS, FB,
+              FL, FS, FF,
+              GD, DD, ZD, CD, UD,
+              KI, AN,
+              DOPT, GOPT, DLR, GLR,
+              GLAMB, BS, TALPHA, TBETA, DC, GC)
+    PRFX = 'infogan.{:d}.{}.{}.{}.{}.{}.{}.{}.{:d}.{:d}.{}.{}.{}.{}.{}.{}.{}.{:.0e}.{:.0e}.{:.0e}.{}.{:.0e}.{:.0e}.{}.{}'.format(*params)
 
     TX, TY = load_thermal_params(NAME, N)
     TX, TY = TX[::I], TY[::I]
@@ -284,17 +276,13 @@ if __name__ == '__main__':
     L = load_losses(NAME, N, I, NS, SC, SEED, PRFX, BN)
     plot_losses(L, CM, NAME, N, I, NS, SC, SEED, PRFX, VERBOSE)
 
-    if np.any(np.array([ALPHA, BETA, LAMBDA]) > 0):
-        MU = load_output_data('vae_mean', NAME, N, I, NS, SC, SEED, PRFX)
-        SIGMA = load_output_data('vae_sigma', NAME, N, I, NS, SC, SEED, PRFX)
-        Z = load_output_data('vae_z', NAME, N, I, NS, SC, SEED, PRFX)
-        plot_diagrams(MU, SIGMA, TX, TY, CM, NAME, N, I, NS, SC, SEED, PRFX, ['m', 's'], VERBOSE)
-        plot_diagrams(Z, None, TX, TY, CM, NAME, N, I, NS, SC, SEED, PRFX, 'z', VERBOSE)
-    else:
-        Z = load_output_data('vae_z', NAME, N, I, NS, SC, SEED, PRFX)
-        plot_diagrams(Z, None, TX, TY, CM, NAME, N, I, NS, SC, SEED, PRFX, 'z', VERBOSE)
-
-    # BCERR = load_output_data('bc_err', NAME, N, I, NS, SC, SEED, PRFX)
-    # BCACC = load_output_data('bc_acc', NAME, N, I, NS, SC, SEED, PRFX)
-    # plot_diagrams(BCERR.reshape(NTX, NTY, NS, -1), BCACC.reshape(NTX, NTY, NS, -1), TX, TY, CM, NAME, N, I, NS, SC, SEED, PRFX, ['bc_err', 'bc_acc'], VERBOSE)
-    # plot_bc_error_accuracy(BCERR, BCACC, CM, NAME, N, I, NS, SC, SEED, PRFX, VERBOSE)
+    if CD > 0 and UD > 0:
+        C = load_output_data('categorical_control', NAME, N, I, NS, SC, SEED, PRFX)
+        U = load_output_data('continuous_control', NAME, N, I, NS, SC, SEED, PRFX)
+    elif CD > 0:
+        C = load_output_data('categorical_control', NAME, N, I, NS, SC, SEED, PRFX)
+        U = np.zeros((NTX, NTY, NS, UD))
+    elif UD > 0:
+        C = np.zeros((NTX, NTY, NS, UD))
+        U = load_output_data('continuous_control', NAME, N, I, NS, SC, SEED, PRFX)
+    plot_diagrams(C, U, TX, TY, CM, NAME, N, I, NS, SC, SEED, PRFX, VERBOSE)
