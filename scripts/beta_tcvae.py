@@ -71,11 +71,11 @@ def parse_args():
     parser.add_argument('-ka', '--kld_annealing', help='toggle kld annealing',
                         action='store_true')
     parser.add_argument('-ra', '--alpha', help='total correlation alpha',
-                        type=float, default=1.0)
+                        type=float, default=0.01)
     parser.add_argument('-rb', '--beta', help='total correlation beta',
-                        type=float, default=8.0)
+                        type=float, default=0.08)
     parser.add_argument('-rl', '--lamb', help='total correlation lambda',
-                        type=float, default=1.0)
+                        type=float, default=0.01)
     parser.add_argument('-ki', '--kernel_initializer', help='kernel initializer',
                         type=str, default='lecun_normal')
     parser.add_argument('-an', '--activation', help='activation function',
@@ -89,7 +89,7 @@ def parse_args():
     parser.add_argument('-rs', '--random_sampling', help='random batch sampling',
                         action='store_true')
     parser.add_argument('-ep', '--epochs', help='number of training epochs',
-                        type=int, default=1)
+                        type=int, default=16)
     parser.add_argument('-sd', '--random_seed', help='random seed for sample selection and learning',
                         type=int, default=128)
     args = parser.parse_args()
@@ -264,7 +264,7 @@ class VAE():
         # beta controls total correlation
         # gamma controls dimension-wise kld
         melbo = -self.alpha*(logqz_x-logqz)-self.beta*(logqz-logqz_prodmarginals)-self.lamb*(logqz_prodmarginals-logpz)
-        return -self.kl_anneal*melbo
+        return -self.kl_anneal*melbo/self.z_dim
 
 
     def kullback_leibler_divergence_loss(self):
@@ -278,7 +278,7 @@ class VAE():
         else:
             x = self.enc_x_input
             x_hat = self.x_output
-        return -K.sum(K.reshape(x*K.log(x_hat+self.eps)+(1.-x)*K.log(1.-x_hat+self.eps), shape=(self.batch_size, -1)), axis=-1)
+        return -K.sum(K.reshape(x*K.log(x_hat+self.eps)+(1.-x)*K.log(1.-x_hat+self.eps), shape=(self.batch_size, -1)), axis=-1)/K.prod(self.input_shape)
 
 
     def _build_model(self):

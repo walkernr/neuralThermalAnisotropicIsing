@@ -45,11 +45,11 @@ def parse_args():
     parser.add_argument('-ka', '--kld_annealing', help='toggle kld annealing',
                         action='store_true')
     parser.add_argument('-ra', '--alpha', help='total correlation alpha',
-                        type=float, default=1.0)
+                        type=float, default=0.01)
     parser.add_argument('-rb', '--beta', help='total correlation beta',
-                        type=float, default=8.0)
+                        type=float, default=0.08)
     parser.add_argument('-rl', '--lamb', help='total correlation lambda',
-                        type=float, default=1.0)
+                        type=float, default=0.01)
     parser.add_argument('-ki', '--kernel_initializer', help='kernel initializer',
                         type=str, default='lecun_normal')
     parser.add_argument('-an', '--activation', help='activation function',

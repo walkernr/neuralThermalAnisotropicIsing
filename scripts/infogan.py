@@ -108,7 +108,7 @@ def parse_args():
     parser.add_argument('-rs', '--random_sampling', help='random batch sampling',
                         action='store_true')
     parser.add_argument('-ep', '--epochs', help='number of training epochs',
-                        type=int, default=1)
+                        type=int, default=16)
     parser.add_argument('-sd', '--random_seed', help='random seed for sample selection and learning',
                         type=int, default=128)
     args = parser.parse_args()
