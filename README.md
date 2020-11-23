@@ -103,3 +103,53 @@ Here is an example for restarting from the last equilibration step (1024) of tes
 Restarting simulation with Dask:
 
 `python monte_carlo.py -v -c -r -rd 128 -rn test_0 -rs 1024 nw 24 -nt 1 -mt forkserver -nm test_1 -n 81 -j 1.0 -txn 33 -txr 0.02 8.02 -tyn 33 -tyr 0.02 8.02 -sc 0 -sn 1024 -rec 0`
+
+## `parse_monte_carlo_output.py`
+
+### Purpose
+
+This program parses and saves NumPy arrays of the output of a Monte Carlo simulation.
+
+### Requirements
+
+- NumPy
+
+### Usage
+
+- `v`: Verbose mode
+
+- `nm`: Name (name prefix of simulation)
+
+- `n`: Lattice sites (linear lattice size)
+
+### Example
+
+Parsing the output of `test_0`:
+
+`python parse_monte_carlo_output.py -v -nm test_0 -n 81`
+
+## `plot_monte_carlo_thermal.py`
+
+### Purpose
+
+This program plots the various thermal properties of the Monte Carlo simulation output, including energies, magnetizations, specific heat capacities, and magnetic susceptibilities.
+
+### Requirements
+
+- NumPy
+
+- Matplotlib
+
+### Usage
+
+- `v`: Verbose mode
+
+- `nm`: Name (name prefix of simulation)
+
+- `n`: Lattice sites (linear lattice size)
+
+### Example
+
+Plotting the output of `test_0`:
+
+`python plot_monte_carlo_thermal.py -v -nm test_0 -n 81`
