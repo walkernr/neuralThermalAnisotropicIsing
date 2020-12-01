@@ -399,17 +399,18 @@ def gen_samples():
 # -----------------------------------------
 
 
+@nb.jit(forceobj=True)
 def replica_exchange():
     ''' performs parallel tempering across temperature samples for each field strength '''
     # catalog swaps
     swaps = 0
-    for u in range(NTX-1, -1, -1):
+    for u in range(NTX-1, 0, -1):
         for v in range(u):
-            for k in range(NTY-1, -1, -1):
+            for k in range(NTY-1, 0, -1):
                 for l in range(k):
-                    i = ravel(u, v, NTX)
+                    i = ravel(u, v, NTY)
                     j = ravel(k, l, NTY)
-                    ex1, ey1, ex2, ey2 = STATE[i][1], STATE[i][2], STATE[j][1], STATE[j][2]
+                    ex1, ey1, ex2, ey2 = STATE[i, 1], STATE[i, 2], STATE[j, 1], STATE[j, 2]
                     tx1, ty1, tx2, ty2 = TX[u], TY[v], TX[k], TY[l]
                     b1e1 = ex1/tx1+ey1/ty1
                     b2e2 = ex2/tx2+ey2/ty2
@@ -421,10 +422,7 @@ def replica_exchange():
                         swaps += 1
                         # swap states
                         STATE[i], STATE[j] = STATE[j], STATE[i]
-    if VERBOSE:
-        print('-------------------------------')
-        print('%d replica exchanges performed' % swaps)
-        print('-------------------------------')
+    return swaps
 
 
 # -------------
@@ -571,7 +569,13 @@ if __name__ == '__main__':
             dump_samples_restart()
         # replica exchange markov chain mc
         if (STEP+1) != NSMPL and (STEP+1) <= RECUTOFF:
-            replica_exchange()
+            STATE = np.array(STATE, dtype=object)
+            SWAPS = replica_exchange()
+            STATE = list(STATE)
+            if VERBOSE:
+                print('-------------------------------')
+                print('%d replica exchanges performed' % SWAPS)
+                print('-------------------------------')
     if DASK:
         # terminate client after completion
         CLIENT.close()
