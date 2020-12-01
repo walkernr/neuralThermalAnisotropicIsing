@@ -134,6 +134,7 @@ class VAE():
         self.filter_stride = filter_stride
         # convolutional input and output shapes
         self.input_shape = input_shape
+        self.n_feat = np.prod(self.input_shape)
         self.final_conv_shape = get_final_conv_shape(self.input_shape, self.conv_number,
                                                      self.filter_base_length, self.filter_length,
                                                      self.filter_base_stride, self.filter_stride,
@@ -278,7 +279,7 @@ class VAE():
         else:
             x = self.enc_x_input
             x_hat = self.x_output
-        return -K.sum(K.reshape(x*K.log(x_hat+self.eps)+(1.-x)*K.log(1.-x_hat+self.eps), shape=(self.batch_size, -1)), axis=-1)/K.prod(self.input_shape)
+        return -K.sum(K.reshape(x*K.log(x_hat+self.eps)+(1.-x)*K.log(1.-x_hat+self.eps), shape=(self.batch_size, -1)), axis=-1)/self.n_feat
 
 
     def _build_model(self):
@@ -607,7 +608,7 @@ class VAE():
             for j in batch_range:
                 # set batch loss description
                 batch_loss = self.rolling_loss_average(i, u)
-                batch_acc = np.exp(-batch_loss[-1]/np.prod(self.input_shape))
+                batch_acc = np.exp(-batch_loss[-1])
                 desc = 'Epoch: {}/{} LR Fctr: {:.4f} KL Anl: {:.4f} VAE Lss: {:.4f} TCKLD Lss: {:.4f} RCNST Lss: {:.4f} RCNST Acc: {:.4f}'.format(i+1, num_epochs, lr_factor[i, u], kl_anneal[i, u], *batch_loss, batch_acc)
                 batch_range.set_description(desc)
                 # fetch batch
@@ -693,16 +694,19 @@ if __name__ == '__main__':
         save_output_data(SIGMA, 'vae_sigma', NAME, N, I, NS, SC, SEED, PRFX)
         save_output_data(Z, 'vae_z', NAME, N, I, NS, SC, SEED, PRFX)
         del MU, LOGVAR, SIGMA
-        X = MDL.generate(Z.reshape(-1, ZD), VERBOSE).astype(np.float16)
+        Z = Z.reshape(-1, ZD)
+        X = MDL.generate(Z, VERBOSE).astype(np.float16)
         del Z
     else:
         Z = MDL.encode(CONF.reshape(-1, *IS), VERBOSE)
         Z = Z.reshape(NTX, NTY, NS, ZD)
         save_output_data(Z, 'vae_z', NAME, N, I, NS, SC, SEED, PRFX)
-        X = MDL.generate(Z.reshape(-1, ZD), VERBOSE).astype(np.float16)
+        Z = Z.reshape(-1, ZD)
+        X = MDL.generate(Z, VERBOSE).astype(np.float16)
         del Z
     K.clear_session()
-    BCERR, BCACC = binary_crossentropy_accuracy(CONF.reshape(-1, *IS), X, SC)
+    CONF = CONF.reshape(-1, *IS).astype(np.float16)
+    BCERR, BCACC = binary_crossentropy_accuracy(CONF, X, SC)
     del CONF, X
     save_output_data(BCERR, 'bc_err', NAME, N, I, NS, SC, SEED, PRFX)
     save_output_data(BCACC, 'bc_acc', NAME, N, I, NS, SC, SEED, PRFX)

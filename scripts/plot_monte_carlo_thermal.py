@@ -62,13 +62,14 @@ MAG = DAT[:, :, :, 3]
 MENERX = ENERX.mean(2)
 MENERY = ENERY.mean(2)
 MENER = ENER.mean(2)
-MMAG = np.abs(MAG).mean(2)
+MMAG = MAG.mean(2)
+MAMAG = np.abs(MAG).mean(2)
 
 SPHTX2 = (np.square(ENERX).mean(2)-np.square(ENERX.mean(2)))/np.square(TX.reshape(-1, 1))
 SPHTY2 = (np.square(ENERY).mean(2)-np.square(ENERY.mean(2)))/np.square(TY.reshape(1, -1))
 SPHTXY = ((ENERX*ENERY).mean(2)-ENERX.mean(2)*ENERY.mean(2))*(1./np.square(TX.reshape(-1, 1))+1./np.square(TY.reshape(1, -1)))
 SPHT = SPHTX2+SPHTY2+SPHTXY
-MSUSC = 2*(np.square(np.abs(MAG)).mean(2)-np.square(np.abs(MAG).mean(2)))/(TX.reshape(-1, 1)+TY.reshape(1, -1))
+MSUSC = 0.5*(np.square(np.abs(MAG)).mean(2)-np.square(np.abs(MAG).mean(2)))*(1./TX.reshape(-1, 1)+1./TY.reshape(1, -1))
 
 def plot_diagram(data, alias):
     file_name = PREF+'.{}.png'.format(alias)
@@ -100,6 +101,7 @@ plot_diagram(MENERX, 'enerx')
 plot_diagram(MENERY, 'enery')
 plot_diagram(MENER, 'ener')
 plot_diagram(MMAG, 'mag')
+plot_diagram(MAMAG, 'amag')
 plot_diagram(SPHTX2, 'sphtx2')
 plot_diagram(SPHTY2, 'sphty2')
 plot_diagram(SPHTXY, 'sphtxy')
