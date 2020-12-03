@@ -545,7 +545,7 @@ if __name__ == '__main__':
     # initialize simulation
     if RESTART:
         STATE = load_samples_restart()
-        replica_exchange()
+        # replica_exchange()
     else:
         if DASK:
             STATE = CLIENT.gather(init_samples())
